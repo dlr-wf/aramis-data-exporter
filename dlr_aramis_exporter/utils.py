@@ -38,7 +38,6 @@ class AramisExporter:
         self.project_name = project_name
         self.specimen_name = specimen_name
         self.experiment_name = experiment_name
-        self.cracktip_detection_setup = None
 
         # auto functions
         self.ref_stage = self._get_ref_stage()
