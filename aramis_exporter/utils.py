@@ -277,8 +277,10 @@ class AramisExporter:
              (dict, dict) process data, calibration data
 
         """
-        process_data = {"project_name": self.project_name, "specimen": self.specimen_name,
-                        "experiment_number": self.experiment_name, "gom_project_file": self.project.project_file,
+        process_data = {"project_name": self.project_name,
+                        "specimen": self.specimen_name,
+                        "experiment_number": self.experiment_name,
+                        "gom_project_file": self.project.project_file,
                         "project_creation_time": self.project.project_creation_time,
                         "sensor_name": self.gom_app.get("sys_sensor_configuration.name"),
                         "camera_type": self.gom_app.get("sys_sensor_configuration.camera_type"),
