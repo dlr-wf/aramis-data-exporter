@@ -20,21 +20,24 @@ class AramisExporter:
 
     """
 
-    def __init__(self, gom_app, gom_script, project_name: str, specimen_name: str, experiment_name: str):
+    def __init__(self, gom_app, gom_script, export_file_name: str, project_name: str = None, specimen_name: str = None,
+                 experiment_name: str = None):
         """Initializes class arguments. This is only possible to initialize if called from the gom python instance.
 
         Args:
             gom_app: (gom.app object) read from the open GOM Aramis project
             gom_script: (gom.script object) read from the open GOM Aramis project
-            project_name: name of associated project, might be the gom project or free given string
-            specimen_name: name of the specimen analyzed, can be any string
-            experiment_name: name of the experiment, can be any string
+            export_file_name: name of the output file
+            project_name: (optional) name of the project
+            specimen_name: (optional) name of the specimen
+            experiment_name: (optional) name of the experiment
         """
         print("Reading data from the GOM Aramis Professional project in CrackPy...")
 
         self.gom_app = gom_app
         self.project = gom_app.project
         self.script = gom_script
+        self.export_file_name = export_file_name
         self.project_name = project_name
         self.specimen_name = specimen_name
         self.experiment_name = experiment_name
@@ -280,7 +283,7 @@ class AramisExporter:
                         "sensor_name": self.gom_app.get("sys_sensor_configuration.name"),
                         "camera_type": self.gom_app.get("sys_sensor_configuration.camera_type"),
                         "camera_focal_length":
-                        self.current_surface_comp.deformation_measurement_information.calibration.camera_focal_length,
+                            self.current_surface_comp.deformation_measurement_information.calibration.camera_focal_length,
                         "measuring_distance": self.gom_app.get(
                             "sys_sensor_configuration.scan_measuring_volume.measuring_distance"),
                         "camera_angle": self.gom_app.sys_calibration_camera_angle,
@@ -305,11 +308,12 @@ class AramisExporter:
             (dicts) process data of actual stage, rigid body motion data for actual stage
 
         """
+        global rbmc_object_name
         stage_process_data = {"facet_size": self.current_surface_comp.facet_size,
                               "facet_distance": self.current_surface_comp.point_distance,
                               "exposure_time":
-                                self.project.measurement_series['Deformation 1'].measurements['D1'].
-                                    get('acquisition_parameters.exposure_time'),
+                                  self.project.measurement_series['Deformation 1'].measurements['D1'].
+                                  get('acquisition_parameters.exposure_time'),
                               "current_stage_index": self.current_surface_comp.get('stage.index') - 1,
                               "current_stage_name": self.current_surface_comp.get('stage.name'),
                               "current_stage_date": self.current_surface_comp.get('stage.absolute_time_stamp'),
@@ -324,6 +328,7 @@ class AramisExporter:
         for gom_element in gom_elements:
             if gom_element.get('object_family') == 'alignment_rbmc':
                 rbmc_object_name = gom_element.get('name')
+
         rmbc_data = {"alignment_rotation_x": self.project.alignments[rbmc_object_name].alignment.rotation.x,
                      "alignment_rotation_y": self.project.alignments[rbmc_object_name].alignment.rotation.y,
                      "alignment_rotation_z": self.project.alignments[rbmc_object_name].alignment.rotation.z,
@@ -334,7 +339,6 @@ class AramisExporter:
                      }
 
         return stage_process_data, rmbc_data
-
 
     def export_data(self, stage_indxs: list or str = "all",
                     export_folder_name: str = "aramis_to_txt"):
@@ -417,8 +421,7 @@ class AramisExporter:
         print(f"Exporting stage with index {current_stage_index} in...")
         # getting the current stage as object
 
-        out_file_name = f"{self.project_name}_{self.specimen_name}_{self.experiment_name}" \
-                        f"_{self.project.project_name}_dic_results_{self.ref_stage}_{current_stage_index}"
+        out_file_name = f"{self.export_file_name}_{self.project.project_name}_dic_results_{self.ref_stage}_{current_stage_index}"
 
         out_file = open(os.path.join(export_directory, out_file_name + '.txt'), 'w')
         self._write_header(out_file)
@@ -432,7 +435,7 @@ class AramisExporter:
         connection_file.close()
 
         time_taken = time.time() - start
-        print(f"{time_taken} seconds.")
+        print(f"Export time: {time_taken:.2f} seconds")
 
     def _write_header(self, out_file):
         """Adds a header of metadata to an output file.
@@ -532,7 +535,7 @@ class AramisExporter:
             connection_file.write(
                 f' {3:>10}; {elem + 1:>10}; {connection_array[elem, 0]:>10}; '
                 f'{connection_array[elem, 1]:>10}; {connection_array[elem, 2]:>10}\n'
-                )
+            )
 
     def _export_stage_to_vtk(self, export_directory: os.path, results: list or str, current_stage_index: int):
         """Exports exactly one stage to vtk.
@@ -548,8 +551,7 @@ class AramisExporter:
         # getting the current stage as object
         current_stage = self.project.stages[current_stage_index]
         self.script.sys.show_stage(stage=current_stage)
-        out_file_name = f"{self.project_name}_{self.specimen_name}_{self.experiment_name}" \
-                        f"_{self.project.project_name}_{self.ref_stage}_{current_stage_index}"
+        out_file_name = f"{self.export_file_name}_{self.project.project_name}_{self.ref_stage}_{current_stage_index}"
 
         with open(os.path.join(export_directory, out_file_name + '.vtk'), 'w') as out_file:
             out_file.write("# vtk DataFile Version 2.0\n"
@@ -560,7 +562,7 @@ class AramisExporter:
             self._write_data_to_vtk(out_file, results=results, current_stage=current_stage_index)
 
         time_taken = time.time() - start
-        print(f"{time_taken} seconds.")
+        print(f"Export time: {time_taken:.2f} seconds")
 
     def _write_data_to_vtk(self, out_file, results: list, current_stage: int):
         """Internal routine to fill an open .vtk file.
@@ -623,4 +625,3 @@ class AramisExporter:
                     out_file.write('0.0\n')
                 else:
                     out_file.write(f'{result_dict[key][point_index]}\n')
-
