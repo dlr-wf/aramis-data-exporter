@@ -1,5 +1,9 @@
 # Data exporter for Zeiss GOM Inspect/ARAMIS Professional
 
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.11092746.svg)](https://doi.org/10.5281/zenodo.11092746)
+
+
 The data exporter is a third-party Python package that enables the export of 3D digital image correlation
 (DIC) data from a [Zeiss GOM Inspect/ARAMIS Professional](https://www.gom.com/en/products/3d-testing/aramis-3d-camera)
 project in a neutral and human-readable ASCII data format. The export contains the mesh, displacement and
