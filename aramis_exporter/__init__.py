@@ -6,4 +6,4 @@ warnings.warn("To use the 'aramis exporter' module must be installed on a Zeiss 
 
 
 # package information
-__version__ = "1.1.0"
+__version__ = "1.2.0"

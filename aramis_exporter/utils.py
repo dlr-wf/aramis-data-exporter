@@ -1,13 +1,15 @@
-import os
 import time
 import numpy as np
-
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from pathlib import Path
+import random
 
 class AramisExporter:
     """We use this class as a HELPER module to read and export the data of an OPEN GOM Aramis Professional project
        as a txt file in a specific format.
        You can only use this module IF YOU WORK ON YOUR GOM ARAMIS SYSTEM. And only, directly from the
-       GOM Aramis scripting editor.
+       GOM Aramis scripting editor. To avoid problems, dependencies on external modules are kept to a minimum.
 
     Methods:
         * show_last_stage - shows last stage of project and returns the stage object
@@ -20,13 +22,12 @@ class AramisExporter:
 
     """
 
-    def __init__(self, gom_app, gom_script, export_file_name: str, project_name: str = None, specimen_name: str = None,
+    def __init__(self, gom, export_file_name: str, project_name: str = None, specimen_name: str = None,
                  experiment_name: str = None, metadata_dict: dict = {}):
         """Initializes class arguments. This is only possible to initialize if called from the gom python instance.
 
         Args:
-            gom_app: (gom.app object) read from the open GOM Aramis project
-            gom_script: (gom.script object) read from the open GOM Aramis project
+            gom: (gom object) read from the open GOM Aramis project
             export_file_name: name of the output file
             project_name: (optional) name of the project
             specimen_name: (optional) name of the specimen
@@ -36,9 +37,10 @@ class AramisExporter:
 
         print("Reading data from the GOM Aramis Professional project...")
 
-        self.gom_app = gom_app
-        self.project = gom_app.project
-        self.script = gom_script
+        self.gom_app = gom.app
+        self.project = gom.app.project
+        self.script = gom.script
+        self.gom_File = gom.File
         self.export_file_name = export_file_name
         self.project_name = project_name
         self.specimen_name = specimen_name
@@ -53,6 +55,7 @@ class AramisExporter:
         self.current_surface_comp = self._get_current_component()
         self._check_rbmc()
         self.process_data, self.calibration_data = self.gather_process_data()
+        self.xml_metadata = self.gather_xml_metadata()
 
     def _get_num_stages(self) -> int:
         """
@@ -68,7 +71,7 @@ class AramisExporter:
         """
         return int(self.project.get('reference_stage.index') - 1)
 
-    def _check_export_folder_exists(self, export_folder_name: str) -> os.path:
+    def _check_export_folder_exists(self, export_folder_name: Path) -> Path:
         """Check if the export folder exists. If not creates.
         Args:
             export_folder_name: name of export folder relative to project directory
@@ -76,11 +79,12 @@ class AramisExporter:
         Returns:
             path object for export directory
         """
-        if not os.path.isdir(os.path.join(os.path.dirname(self.project.project_file), export_folder_name)):
-            os.mkdir(os.path.join(os.path.dirname(self.project.project_file), export_folder_name))
+        export_path = Path(self.project.project_file).parent / export_folder_name
+        if not export_path.is_dir():
+            export_path.mkdir(parents=True, exist_ok=True)
             print(f"Creating a folder '{export_folder_name}'.")
         print(f"Data will be saved in '{export_folder_name}'.")
-        return os.path.join(os.path.dirname(self.project.project_file), export_folder_name)
+        return export_path
 
     def _check_all_stages_active(self):
         """Checks if all stages are active.
@@ -228,34 +232,15 @@ class AramisExporter:
         print(f"Getting result dictionary for stage with name {self.project.stages[current_stage_index].get('name')}"
               f" and index {self.project.stages[current_stage_index].get('index')}...")
         current_surface_comp = self._get_current_component(index=0)
-        facet_coordinates = np.array(
-            self.project.actual_elements[current_surface_comp.name].data.coordinate[
-                current_stage_index])  # check for s.th. like 'data.ref_coordinate
+        facet_coordinates = np.array(self.project.actual_elements[current_surface_comp.name].data.coordinate[current_stage_index])  # check for s.th. like 'data.ref_coordinate
         facet_coordinates = np.where(np.abs(facet_coordinates) > 1e-30, facet_coordinates, 0)
-        disp_x = np.array(
-            self.project.inspection[current_surface_comp.name + '.dX'].data.result_dimension.deviation[
-                current_stage_index])[
-            0].flatten()
-        disp_y = np.array(
-            self.project.inspection[current_surface_comp.name + '.dY'].data.result_dimension.deviation[
-                current_stage_index])[
-            0].flatten()
-        disp_z = np.array(
-            self.project.inspection[current_surface_comp.name + '.dZ'].data.result_dimension.deviation[
-                current_stage_index])[
-            0].flatten()
-        eps_x = \
-            np.array(self.project.inspection[current_surface_comp.name + '.epsX'].data.result_dimension.deviation[
-                         current_stage_index])[0].flatten()
-        eps_y = \
-            np.array(self.project.inspection[current_surface_comp.name + '.epsY'].data.result_dimension.deviation[
-                         current_stage_index])[0].flatten()
-        eps_xy = \
-            np.array(self.project.inspection[current_surface_comp.name + '.epsXY'].data.result_dimension.deviation[
-                         current_stage_index])[0].flatten()
-        eps_eqv = \
-            np.array(self.project.inspection[current_surface_comp.name + '.phiM'].data.result_dimension.deviation[
-                         current_stage_index])[0].flatten()
+        disp_x = np.array(self.project.inspection[current_surface_comp.name + '.dX'].data.result_dimension.deviation[current_stage_index])[0].flatten()
+        disp_y = np.array(self.project.inspection[current_surface_comp.name + '.dY'].data.result_dimension.deviation[current_stage_index])[0].flatten()
+        disp_z = np.array(self.project.inspection[current_surface_comp.name + '.dZ'].data.result_dimension.deviation[current_stage_index])[0].flatten()
+        eps_x = np.array(self.project.inspection[current_surface_comp.name + '.epsX'].data.result_dimension.deviation[current_stage_index])[0].flatten()
+        eps_y = np.array(self.project.inspection[current_surface_comp.name + '.epsY'].data.result_dimension.deviation[current_stage_index])[0].flatten()
+        eps_xy = np.array(self.project.inspection[current_surface_comp.name + '.epsXY'].data.result_dimension.deviation[current_stage_index])[0].flatten()
+        eps_eqv = np.array(self.project.inspection[current_surface_comp.name + '.phiM'].data.result_dimension.deviation[current_stage_index])[0].flatten()
 
         x_undef = facet_coordinates[:, 0] - disp_x
         y_undef = facet_coordinates[:, 1] - disp_y
@@ -280,17 +265,20 @@ class AramisExporter:
              (dict, dict) process data, calibration data
 
         """
-        process_data = {"project_name": self.project_name,
+        process_data = {"application_name": self.gom_app.application_name,
+                        "application_version": self.gom_app.application_build_information.version,
+                        "application_revision": self.gom_app.application_build_information.revision,
+                        "application_build_date": self.gom_app.application_build_information.date,
+                        "current_user": self.gom_app.current_user,
+                        "project_name": self.project_name,
                         "specimen": self.specimen_name,
                         "experiment_number": self.experiment_name,
                         "gom_project_file": self.project.project_file,
                         "project_creation_time": self.project.project_creation_time,
                         "sensor_name": self.gom_app.get("sys_sensor_configuration.name"),
                         "camera_type": self.gom_app.get("sys_sensor_configuration.camera_type"),
-                        "camera_focal_length":
-                            self.current_surface_comp.deformation_measurement_information.calibration.camera_focal_length,
-                        "measuring_distance": self.gom_app.get(
-                            "sys_sensor_configuration.scan_measuring_volume.measuring_distance"),
+                        "camera_focal_length": self.current_surface_comp.deformation_measurement_information.calibration.camera_focal_length,
+                        "measuring_distance": self.gom_app.get("sys_sensor_configuration.scan_measuring_volume.measuring_distance"),
                         "camera_angle": self.gom_app.sys_calibration_camera_angle,
                         "camera_angle_degrees": self.gom_app.sys_calibration_camera_angle * 180.0 / np.pi,
                         }
@@ -301,8 +289,7 @@ class AramisExporter:
                             "calibration_volume_width": self.gom_app.sys_calibration_volume_width,
                             "calibration_volume_length": self.gom_app.sys_calibration_volume_length,
                             "calibration_volume_depth": self.gom_app.sys_calibration_volume_depth,
-                            "calibration_deviation":
-                                self.current_surface_comp.deformation_measurement_information.calibration.deviation
+                            "calibration_deviation": self.current_surface_comp.deformation_measurement_information.calibration.deviation
                             }
 
         return process_data, calibration_data
@@ -316,19 +303,18 @@ class AramisExporter:
         """
         rmbc_data = {}
 
-        stage_process_data = {"facet_size": self.current_surface_comp.facet_size,
+        stage_process_data = {"export_date": datetime.now().strftime("%d.%m.%Y %H:%M:%S.%f"),
+                              "facet_size": self.current_surface_comp.facet_size,
                               "facet_distance": self.current_surface_comp.point_distance,
-                              "exposure_time":
-                                  self.project.measurement_series['Deformation 1'].measurements['D1'].
-                                  get('acquisition_parameters.exposure_time'),
+                              "exposure_time": self.project.measurement_series['Deformation 1'].measurements['D1'].get('acquisition_parameters.exposure_time'),
                               "current_stage_index": self.current_surface_comp.get('stage.index') - 1,
                               "current_stage_name": self.current_surface_comp.get('stage.name'),
                               "current_stage_date": self.current_surface_comp.get('stage.absolute_time_stamp'),
+                              "current_stage_date_ms": self.xml_metadata[self.current_surface_comp.get('stage.index') - 1]['date'],
                               "current_stage_relative_date": self.current_surface_comp.get('stage.relative_time'),
                               "reference_stage_index": self.current_surface_comp.get('reference_stage.index') - 1,
                               "reference_stage_name": self.current_surface_comp.get('reference_stage.display_name'),
-                              "reference_stage_date": self.current_surface_comp.get(
-                                  'reference_stage.absolute_time_stamp')
+                              "reference_stage_date": self.current_surface_comp.get('reference_stage.absolute_time_stamp')
                               }
 
         gom_elements = self.project.alignments.filter('type', 'transformation_object')
@@ -339,26 +325,76 @@ class AramisExporter:
                 rmbc_data = {"alignment_rotation_x": self.project.alignments[rbmc_object_name].alignment.rotation.x,
                              "alignment_rotation_y": self.project.alignments[rbmc_object_name].alignment.rotation.y,
                              "alignment_rotation_z": self.project.alignments[rbmc_object_name].alignment.rotation.z,
-                             "alignment_translation_x": self.project.alignments[
-                                 rbmc_object_name].alignment.translation.x,
-                             "alignment_translation_y": self.project.alignments[
-                                 rbmc_object_name].alignment.translation.y,
-                             "alignment_translation_z": self.project.alignments[
-                                 rbmc_object_name].alignment.translation.z,
+                             "alignment_translation_x": self.project.alignments[rbmc_object_name].alignment.translation.x,
+                             "alignment_translation_y": self.project.alignments[rbmc_object_name].alignment.translation.y,
+                             "alignment_translation_z": self.project.alignments[rbmc_object_name].alignment.translation.z,
                              "alignment_deviation": self.project.alignments[rbmc_object_name].alignment.deviation,
                              }
 
         return stage_process_data, rmbc_data
 
+    def gather_xml_metadata(self) -> dict:
+        """Gathers metadata from the XML file (Datei -> Exportieren -> Stufendaten -> Elements (xml)).
+        This is currently the sole source of timestamps with millisecond precision.
+
+        Returns:
+            (dict) metadata from the XML file
+
+        """
+        print("Gathering metadata from the XML file...")
+        random_number = random.randint(1, 1000)
+        xml_path = Path(self.project.project_file).parent / f"tmp_{random_number}.xml"
+        self.script.sys.export_gom_xml(
+            angle_unit='default',
+            decimal_places=50,
+            elements=[self.project.actual_elements[self.current_surface_comp.name]],
+            export_stages_mode='all',
+            file=str(xml_path),
+            format=self.gom_File('giefv20_stages.xsl'),
+            length_unit='default',
+            one_file_per_stage=False,
+            use_imported_names_for_export=False)
+        metadata = self._parse_xml_metadata(xml_path)
+        xml_path.unlink()  # Delete the temporary file
+        return metadata
+
+    def _parse_xml_metadata(self, xml_path: Path) -> dict:
+        """Parse XML metadata file for stage information.
+
+        Args:
+            xml_path: path to the XML file
+
+        Returns:
+            (dict) metadata from the XML file
+
+        """
+        xml_data = {}
+        tree = ET.parse(xml_path)
+        for stage in tree.findall('.//header/stage'):
+            index = int(stage.get('index')) - 1
+            xml_data[index] = {
+                'id': int(stage.get('id')),
+                'name': stage.get('name'),
+                'date': datetime.strptime(stage.get('date'), "%Y-%m-%dT%H:%M:%S.%f"),
+                'nanoseconds': int(stage.get('nanoseconds')),
+                'rel_time': float(stage.get('rel_time'))
+            }
+        return xml_data
+
     def export_data(self, stage_indxs: list or str = "all",
-                    export_folder_name: str = "aramis_to_txt"):
+                    export_folder_name: str = None, nodemap_subfolder: str = 'nodemaps', connection_subfolder: str = 'connections'):
         """Can be called to export all stages to txt files or specific stages to txt files.
 
         Args:
             stage_indxs: list of stage indexes or "all" or "last"
             export_folder_name: name of export folder. Will be created if not exists. Relative to aramis project path
+            nodemap_subfolder: name of nodemap subfolder
+            connection_subfolder: name of connection subfolder
 
         """
+        if export_folder_name is None:
+            export_folder_name = f'{self.project.project_name}_export'
+
         self._check_all_stages_active()
 
         if stage_indxs == "all":
@@ -372,7 +408,10 @@ class AramisExporter:
                 for stage in self.project.stages:
                     if stage.get("index") == index:
                         stages.append(stage)
-        export_directory = self._check_export_folder_exists(export_folder_name)
+
+        nodemap_export_directory = self._check_export_folder_exists(Path(export_folder_name) / nodemap_subfolder)
+        connection_export_directory = self._check_export_folder_exists(Path(export_folder_name) / connection_subfolder)
+
         print(f'Number of stages {len(stages)}')
         for current_stage in stages:
             current_stage_index = int(current_stage.get('index'))
@@ -380,18 +419,24 @@ class AramisExporter:
             current_surface_comp = self._get_current_component(index=0).get('name')
 
             if self.project.inspection[current_surface_comp + '.dX'].computation_status == "computed":
-                self._export_stage_to_txt(export_directory=export_directory,
+                self._export_stage_to_txt(nodemap_export_directory=nodemap_export_directory,
+                                          connection_export_directory=connection_export_directory,
                                           current_stage_index=current_stage_index)
 
-    def export_data_to_vtk(self, stage_indxs: list or str = "all", export_folder_name: str = "aramis_to_vtk"):
+    def export_data_to_vtk(self, stage_indxs: list or str = "all",
+                           export_folder_name: str = None, vtk_subfolder: str = 'vtk'):
         """
         Can be called to export all stages to vtk files or specific stages to vtk files.
 
         Args:
             stage_indxs: list of stage indexes or "all" or "last"
             export_folder_name: name of export folder. Will be created if not exists. Relative to aramis project path
+            vtk_subfolder: name of vtk subfolder
 
         """
+        if export_folder_name is None:
+            export_folder_name = f'{self.project.project_name}_export'
+
         self._check_all_stages_active()
 
         if stage_indxs == "all":
@@ -404,7 +449,7 @@ class AramisExporter:
                     if stage.get("index") == index:
                         stages.append(stage)
 
-        export_directory = self._check_export_folder_exists(export_folder_name)
+        export_directory = self._check_export_folder_exists(Path(export_folder_name) / vtk_subfolder)
 
         for current_stage in stages:
             current_stage_index = int(current_stage.get('index'))
@@ -413,11 +458,13 @@ class AramisExporter:
             self._export_stage_to_vtk(export_directory=export_directory,
                                       current_stage_index=current_stage_index)
 
-    def _export_stage_to_txt(self, export_directory: os.path, current_stage_index: int):
+    def _export_stage_to_txt(self, nodemap_export_directory: Path, connection_export_directory: Path,
+                             current_stage_index: int):
         """Exports exactly one stage to txt.
 
         Args:
-            export_directory: relative path to export directory
+            nodemap_export_directory: relative path to nodemap export directory
+            connection_export_directory: relative path to connection export directory
             current_stage_index: index of stage to be exported
 
         """
@@ -427,13 +474,13 @@ class AramisExporter:
 
         out_file_name = f"{self.export_file_name}_{self.project.project_name}_dic_results_{self.ref_stage}_{current_stage_index}"
 
-        out_file = open(os.path.join(export_directory, out_file_name + '.txt'), 'w')
+        out_file = open(Path(nodemap_export_directory) / f"{out_file_name}.txt", 'w')
         self._write_header(out_file)
         self._write_data(out_file, current_stage=current_stage_index)
         out_file.close()
 
         connection_file_name = out_file_name + "_connections"
-        connection_file = open(os.path.join(export_directory, connection_file_name + '.txt'), 'w')
+        connection_file = open(Path(connection_export_directory) / f"{connection_file_name}.txt", 'w')
         self._write_connections(connection_file, current_stage=current_stage_index)
 
         connection_file.close()
@@ -501,25 +548,18 @@ class AramisExporter:
 
         result_dic = self.get_result_dict(current_stage)
         out_file.write(
-            '#{:>10}; {:>20}; {:>20}; {:>20}; {:>20}; {:>20}; {:>20}; {:>20}; {:>20}; {:>20}; {:>20}\n'.format(
-                'ID', 'x_undef [mm]', 'y_undef [mm]', 'z_undef [mm]', 'u [mm]', 'v [mm]', 'w [mm]', 'epsx [%]',
-                'epsy [%]', 'epsxy [1]', 'epseqv [%]'))
+            f'#{"ID":>9}; {"x_undef [mm]":>20}; {"y_undef [mm]":>20}; {"z_undef [mm]":>20}; '
+            f'{"u [mm]":>20}; {"v [mm]":>20}; {"w [mm]":>20}; '
+            f'{"epsx [%]":>20}; {"epsy [%]":>20}; {"epsxy [1]":>20}; {"epseqv [%]":>20}\n'
+        )
 
         for facet_index in range(len(result_dic["facet_coordinates"][:, 0])):
             out_file.write(
-                '{:10.0f}; {:20.10f}; {:20.10f}; {:20.10f}; '
-                '{:20.15f}; {:20.15f}; {:20.15f}; {:20.15f}; {:20.15f}; {:20.15f}; {:20.15f}\n'.format(
-                    facet_index + 1,
-                    result_dic["x_undef"][facet_index],
-                    result_dic["y_undef"][facet_index],
-                    result_dic["z_undef"][facet_index],
-                    result_dic["disp_x"][facet_index],
-                    result_dic["disp_y"][facet_index],
-                    result_dic["disp_z"][facet_index],
-                    result_dic["eps_x"][facet_index],
-                    result_dic["eps_y"][facet_index],
-                    result_dic["eps_xy"][facet_index],
-                    result_dic["eps_eqv"][facet_index])
+                f'{facet_index + 1:10.0f}; '
+                f'{result_dic["x_undef"][facet_index]:20.10f}; {result_dic["y_undef"][facet_index]:20.10f}; {result_dic["z_undef"][facet_index]:20.10f}; '
+                f'{result_dic["disp_x"][facet_index]:20.15f}; {result_dic["disp_y"][facet_index]:20.15f}; {result_dic["disp_z"][facet_index]:20.15f}; '
+                f'{result_dic["eps_x"][facet_index]:20.15f}; {result_dic["eps_y"][facet_index]:20.15f}; {result_dic["eps_xy"][facet_index]:20.15f}; '
+                f'{result_dic["eps_eqv"][facet_index]:20.15f}\n'
             )
 
     def _write_connections(self, connection_file, current_stage: int):
@@ -541,7 +581,7 @@ class AramisExporter:
                 f'{connection_array[elem, 1]:>10}; {connection_array[elem, 2]:>10}\n'
             )
 
-    def _export_stage_to_vtk(self, export_directory: os.path, current_stage_index: int):
+    def _export_stage_to_vtk(self, export_directory: Path, current_stage_index: int):
         """Exports exactly one stage to vtk.
 
         Args:
@@ -556,7 +596,7 @@ class AramisExporter:
         self.script.sys.show_stage(stage=current_stage)
         vtk_file_name = f"{self.export_file_name}_{self.project.project_name}_{self.ref_stage}_{current_stage_index}"
 
-        with open(os.path.join(export_directory, vtk_file_name + '.vtk'), 'w') as vtk_file:
+        with open(Path(export_directory) / f"{vtk_file_name}.vtk", 'w') as vtk_file:
             vtk_file.write("# vtk DataFile Version 2.0\n"
                            "3D unstructured mesh of FE model with tetra elements\n"
                            "ASCII\n"
@@ -576,8 +616,7 @@ class AramisExporter:
 
         """
         result_dict = self.get_result_dict(current_stage)
-        triangle_connections = np.array(
-            self.project.actual_elements[self.current_surface_comp.name].data.triangle[current_stage])
+        triangle_connections = np.array(self.project.actual_elements[self.current_surface_comp.name].data.triangle[current_stage])
 
         vtk_file.write(f'POINTS {len(result_dict["x_undef"][:])} float\n')
         for point_index in range(len(result_dict["x_undef"][:])):
@@ -624,14 +663,11 @@ class AramisExporter:
         self._write_scalar_to_vtk(vtk_file, 'u_x%20[mm]', result_dict['disp_x'])
         self._write_scalar_to_vtk(vtk_file, 'u_y%20[mm]', result_dict['disp_y'])
         self._write_scalar_to_vtk(vtk_file, 'u_z%20[mm]', result_dict['disp_z'])
-        self._write_scalar_to_vtk(vtk_file, 'u_sum%20[mm]', np.sqrt(result_dict['disp_x'] ** 2 +
-                                                                    result_dict['disp_y'] ** 2 +
-                                                                    result_dict['disp_z'] ** 2))
+        self._write_scalar_to_vtk(vtk_file, 'u_sum%20[mm]', np.sqrt(result_dict['disp_x'] ** 2 + result_dict['disp_y'] ** 2 + result_dict['disp_z'] ** 2))
         self._write_scalar_to_vtk(vtk_file, 'eps_x%20[%25]', result_dict['eps_x'])
         self._write_scalar_to_vtk(vtk_file, 'eps_y%20[%25]', result_dict['eps_y'])
         self._write_scalar_to_vtk(vtk_file, 'eps_xy%20[1]', result_dict['eps_xy'])
         self._write_scalar_to_vtk(vtk_file, 'eps_vm%20[%25]', result_dict['eps_eqv'])
-
 
     def _write_scalar_to_vtk(self, vtk_file, scalar_name: str, scalar_data: np.array):
         """Internal routine to write a scalar to an open .vtk file.

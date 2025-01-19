@@ -14,21 +14,22 @@ import gom
 from aramis_exporter.utils import AramisExporter
 
 # Define the project, specimen, and wmp number, the aramis_project belongs to
-PROJECT_NAME = "DELETE"
+PROJECT_NAME = "TestProject"
 SPECIMEN_NAME = "SP"
 WMP_NUMBER = "123"
 
 # Definition of the name of the output file
 export_file_name = f"{PROJECT_NAME}_{SPECIMEN_NAME}_{SPECIMEN_NAME}"
 
-# Initialize gom_project with tom functionalities
-exporter = AramisExporter(gom.app, gom.script,
+# Initialize the AramisExporter object
+exporter = AramisExporter(gom,
                           export_file_name,
                           project_name=PROJECT_NAME,
                           specimen_name=SPECIMEN_NAME,
                           experiment_name=WMP_NUMBER,
-                          metadata_dict={'test': 123},
+                          metadata_dict={'test': 123},  # optional metadata
                           )
+
 # export data of given stages or all stages
 exporter.export_data(stage_indxs='all')
 exporter.export_data_to_vtk(stage_indxs='all')
