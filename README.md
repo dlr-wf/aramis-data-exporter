@@ -94,7 +94,7 @@ WMP_NUMBER = "123"
 export_file_name = f"{PROJECT_NAME}_{SPECIMEN_NAME}_{SPECIMEN_NAME}"
 
 # Initialize gom_project with tom functionalities
-exporter = AramisExporter(gom.app, gom.script,
+exporter = AramisExporter(gom,
                           export_file_name,
                           project_name=PROJECT_NAME,
                           specimen_name=SPECIMEN_NAME,
@@ -180,6 +180,15 @@ The following scalars are available:
 - `x [mm]`, `y [mm]`, `z [mm]`
 - `u_x [mm]`, `u_y [mm]`, `u_z [mm]`
 - `eps_x [%]`, `eps_y [%]`, `eps_xy [1]`, `eps_vm [%]`
+
+## Export directory structure
+
+The export process creates the following directory structure:
+
+- `export_directory`
+  - `nodemap_subfolder`: Contains the nodemap files for each stage.
+  - `connection_subfolder`: Contains the connection files for each stage.
+  - `vtk_subfolder`: Contains the VTK files for each stage (if VTK export is performed).
 
 ## Dependencies
 
