@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aramis-data-exporter"
+authors = [
+    {name="Tobias Strohmann"},
+    {name="David Melching"},
+    {name="Eric Breitbarth", email="Eric.Breitbarth@dlr.de"}
+]
+description = "Zeiss GOM Aramis Data Exporter"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+]
+dependencies = ["numpy"]
+dynamic = ["version"]
+
+[tool.setuptools]
+packages = ["aramis_exporter"]
+
+[tool.setuptools.dynamic]
+version = {attr = "aramis_exporter.__version__"}
+
+[project.urls]
+"Homepage" = "https://github.com/dlr-wf/aramis-data-exporter"
